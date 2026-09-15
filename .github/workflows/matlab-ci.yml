@@ -36,8 +36,13 @@ jobs:
         with:
           command: addpath(genpath(pwd)); test_gui_workflow();
 
+      - name: Verify workflow against user manual
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath(genpath(pwd)); test_user_manual_acceptance();
+
       - name: Package tested MATLAB source
-        run: zip -r matlab-tested-source.zip main.m app modules tests README.md
+        run: zip -r matlab-tested-source.zip main.m app modules tests README.md docs
 
       - name: Upload tested source artifact
         uses: actions/upload-artifact@v4
