@@ -35,3 +35,13 @@ jobs:
         uses: matlab-actions/run-command@v3
         with:
           command: addpath(genpath(pwd)); test_gui_workflow();
+
+      - name: Package tested MATLAB source
+        run: zip -r matlab-tested-source.zip main.m app modules tests README.md
+
+      - name: Upload tested source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: matlab-tested-source
+          path: matlab-tested-source.zip
+          if-no-files-found: error
