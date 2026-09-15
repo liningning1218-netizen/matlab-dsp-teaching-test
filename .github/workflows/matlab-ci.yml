@@ -1,0 +1,37 @@
+name: MATLAB CI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  matlab-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Start virtual display server
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          Xvfb :99 -screen 0 1920x1080x24 &
+          echo "DISPLAY=:99" >> $GITHUB_ENV
+
+      - name: Set up MATLAB
+        uses: matlab-actions/setup-matlab@v3
+        with:
+          release: latest
+          cache: true
+
+      - name: Run numerical DSP tests
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath(genpath(pwd)); ok=run_all_tests(); assert(ok); [x,fs]=generate_demo_audio(''); assert(fs==16000); assert(numel(x)==64000); [S,f,t]=frame_spectrogram(x,fs,30,0.75); assert(~isempty(S)&&all(isfinite(S(:)))); [yn,~]=add_demo_noise(x,fs,'tone',0.35,1000); b=design_fir_filter('bandstop',fs,200,900,1100); yf=apply_fir_filter(yn,b); assert(numel(yf)==numel(x)); [yr,d]=apply_voice_preset(x,fs,'robot'); assert(numel(yr)==numel(x)); assert(~isempty(d));
+
+      - name: Launch GUI smoke test
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath(genpath(pwd)); f=main(); drawnow; assert(isvalid(f)); assert(strcmp(f.Name,'数字信号处理——语音信号教学演示平台')); assert(numel(findall(f,'Type','uitab'))==4); close(f); drawnow;
