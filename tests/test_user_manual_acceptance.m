@@ -7,7 +7,7 @@ f0=require_tag(f,'samplingF0'); fsField=require_tag(f,'samplingFs'); dur=require
 assert(abs(dur.Value-0.02)<1e-12); f0.Value=900; fsField.Value=1000; dur.Value=0.02; invoke_button(f,'运行正弦采样实验'); text1=join_text(info.Value);
 assert(contains(text1,'欠采样')); assert(contains(text1,'100.0 Hz')); assert(contains(text1,'理论与 FFT 一致'));
 fsField.Value=4000; invoke_button(f,'运行正弦采样实验'); text2=join_text(info.Value); assert(contains(text2,'正常采样')); assert(contains(text2,'900.0 Hz'));
-invoke_button(f,'恢复示例'); dec=require_tag(f,'speechDecimationFactor'); dec.Value=4; invoke_button(f,'执行语音降采样'); status=require_tag(f,'statusLabel'); assert(contains(status.Text,'4000'));
+invoke_button(f,'恢复内置音频'); dec=require_tag(f,'speechDecimationFactor'); dec.Value=4; invoke_button(f,'执行语音降采样'); status=require_tag(f,'statusLabel'); assert(contains(status.Text,'4000'));
 fftSec=require_tag(f,'fftDuration'); fftSec.Value=2; invoke_button(f,'分析当前语音'); assert(~isempty(require_tag(f,'fftTimeAxes').Children)); assert(~isempty(require_tag(f,'fftSpectrumAxes').Children)); assert(~isempty(require_tag(f,'spectrogramAxes').Children));
 assert(strcmp(require_tag(f,'noiseMode').Value,'单频干扰')); assert(abs(require_tag(f,'interferenceFrequency').Value-1000)<1e-12); assert(strcmp(require_tag(f,'filterType').Value,'带阻'));
 invoke_button(f,'步骤 1：生成含噪语音'); assert(contains(status.Text,'含噪语音已生成')); low=require_tag(f,'filterF1').Value; high=require_tag(f,'filterF2').Value; assert(low<1000 && high>1000,'Auto bandstop must bracket the teaching tone.');
