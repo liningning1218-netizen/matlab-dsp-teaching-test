@@ -5,13 +5,8 @@ if nargin < 1 || isempty(projectRoot)
 end
 addpath(genpath(fullfile(projectRoot, 'modules')));
 
-demoFile = fullfile(projectRoot, 'audio', 'demo_speech_like.wav');
-if exist(demoFile, 'file')
-    [x0, fs0] = audioread(demoFile);
-else
-    [x0, fs0] = generate_demo_audio(demoFile);
-end
-audio = make_audio_struct(x0, fs0, '内置教学示例（非真实语音）');
+[x0, fs0, builtinName] = load_builtin_audio(projectRoot);
+audio = make_audio_struct(x0, fs0, builtinName);
 noisyAudio = [];
 filteredAudio = [];
 voiceAudio = [];
@@ -31,7 +26,7 @@ uibutton(commonBar,'Text','导入音频','ButtonPushedFcn',@onImport);
 uibutton(commonBar,'Text','录制 3 秒','ButtonPushedFcn',@onRecord);
 uibutton(commonBar,'Text','播放原音','Tag','playOriginalButton','ButtonPushedFcn',@onPlayOriginal);
 uibutton(commonBar,'Text','停止声音','ButtonPushedFcn',@onStopSound);
-uibutton(commonBar,'Text','恢复示例','ButtonPushedFcn',@onResetDemo);
+uibutton(commonBar,'Text','恢复内置音频','ButtonPushedFcn',@onResetDemo);
 uibutton(commonBar,'Text','一键自检','Tag','selfTestButton','ButtonPushedFcn',@onRunSelfTest);
 infoLabel = uilabel(commonBar,'Text','','FontWeight','bold','Tag','audioInfoLabel');
 infoLabel.Layout.Row = 1; infoLabel.Layout.Column = 7;
@@ -70,7 +65,7 @@ playDec=uibutton(spg,'Text','播放降采样后语音','ButtonPushedFcn',@onPlay
 sInfo=uitextarea(spg,'Editable','off','Tag','samplingInfo','Value',{'实验 A 用于验证奈奎斯特采样定理。';'实验 B 每隔 M 个样本保留 1 个，故意不加抗混叠滤波，用于听辨错误降采样的影响。'});
 sInfo.Layout.Row=[11 20]; sInfo.Layout.Column=[1 2];
 axSample=uiaxes(sg,'Tag','samplingTimeAxes'); axSample.Layout.Row=1; axSample.Layout.Column=[2 3];
-axSample.Title.String='连续信号、实际采样点与采样点连线'; axSample.XLabel.String='时间 / s'; axSample.YLabel.String='幅值'; grid(axSample,'on');
+axSample.Title.String='连续信号、离散采样序列与混叠参考'; axSample.XLabel.String='时间 / s'; axSample.YLabel.String='幅值'; grid(axSample,'on');
 axSampleSpec=uiaxes(sg,'Tag','samplingSpectrumAxes'); axSampleSpec.Layout.Row=2; axSampleSpec.Layout.Column=[2 3];
 axSampleSpec.Title.String='离散采样序列的单边幅度谱'; axSampleSpec.XLabel.String='频率 / Hz'; axSampleSpec.YLabel.String='幅值'; grid(axSampleSpec,'on');
 
@@ -155,9 +150,9 @@ onFourier([],[]);
     end
 
     function onResetDemo(~,~)
-        if exist(demoFile,'file'), [x,fs]=audioread(demoFile); else, [x,fs]=generate_demo_audio(demoFile); end
-        audio=make_audio_struct(x,fs,'内置教学示例（非真实语音）');
-        clearDerived(); updateAudioInfo(); onFourier([],[]); setStatus('已恢复内置教学示例');
+        [x,fs,builtinName]=load_builtin_audio(projectRoot);
+        audio=make_audio_struct(x,fs,builtinName);
+        clearDerived(); updateAudioInfo(); onFourier([],[]); setStatus(sprintf('已恢复%s',builtinName));
     end
 
     function onRunSelfTest(~,~)
@@ -180,16 +175,15 @@ onFourier([],[]);
             countLabel.Text=sprintf('采样点数 N：%d（由 fs 与观察时长自动得到）',d.sampleCount);
             cla(axSample); hold(axSample,'on');
             plot(axSample,d.tRef,d.xRef,'LineWidth',1.0,'DisplayName','原始连续正弦');
-            plot(axSample,d.tRef,d.xApparent,'--','LineWidth',1.2,'DisplayName',sprintf('采样等效表观 %.1f Hz',d.aliasHz));
-            plot(axSample,d.tSample,d.xSample,'-','LineWidth',1.4,'Tag','samplePolyline','DisplayName','采样点连线');
-            stem(axSample,d.tSample,d.xSample,'filled','DisplayName','实际离散采样点');
+            plot(axSample,d.tRef,d.xApparent,'--','LineWidth',1.2,'DisplayName',sprintf('等效混叠参考 %.1f Hz（仅用于解释）',d.aliasHz));
+            stem(axSample,d.tSample,d.xSample,'filled','DisplayName','离散采样序列 x[n]');
             hold(axSample,'off'); legend(axSample,'Location','best');
             [f,m]=one_sided_spectrum(d.xSample,d.fs); plot(axSampleSpec,f,m,'LineWidth',1.2); xlim(axSampleSpec,[0 d.fs/2]);
             if numel(m)>1, [~,ii]=max(m(2:end)); ii=ii+1; else, ii=1; end
             fftPeak=f(ii); resolution=d.fs/max(numel(d.xSample),1); consistent=abs(fftPeak-d.aliasHz)<=max(1,1.1*resolution);
             if d.isUndersampled, verdict='实验结论：欠采样，发生频谱混叠'; state='欠采样'; else, verdict='实验结论：正常采样，满足奈奎斯特条件'; state='正常采样'; end
             if consistent, check='验证结果：理论与 FFT 一致'; else, check='验证结果：受短观察时长的 FFT 分辨率影响'; end
-            sInfo.Value={verdict; sprintf('原始正弦频率：%.1f Hz',d.f0); sprintf('采样率：%.1f Hz',d.fs); sprintf('采样点数：%d',d.sampleCount); sprintf('奈奎斯特频率：%.1f Hz',d.nyquist); sprintf('理论表观频率：%.1f Hz',d.aliasHz); sprintf('FFT 检测峰值：%.1f Hz',fftPeak); check; '图中的“采样点连线”只用于帮助观察离散样本趋势，不代表采样后真的变成连续信号。'};
+            sInfo.Value={verdict; sprintf('原始正弦频率：%.1f Hz',d.f0); sprintf('采样率：%.1f Hz',d.fs); sprintf('采样点数：%d',d.sampleCount); sprintf('奈奎斯特频率：%.1f Hz',d.nyquist); sprintf('理论混叠频率：%.1f Hz',d.aliasHz); sprintf('FFT 检测峰值：%.1f Hz',fftPeak); check; '课堂读图：圆点和竖线表示离散采样序列 x[n]；虚线只是用于解释混叠的等效低频参考，不表示采样后得到连续曲线。'};
             setStatus(sprintf('采样实验完成：%s，FFT 峰值 %.1f Hz',state,fftPeak));
         catch ME, showError(ME); end
     end
@@ -224,35 +218,34 @@ onFourier([],[]);
 
     function onGenerateNoise(~,~)
         try
-            tone=min(toneField.Value,0.49*audio.fs); toneField.Value=tone;
-            mode=mapNoise(noiseDD.Value);
+            tone=min(toneField.Value,0.49*audio.fs); mode=mapNoise(noiseDD.Value);
             [noisyAudio,~]=add_demo_noise(audio.x,audio.fs,mode,noiseAmt.Value,tone);
-            filteredAudio=[]; filterMetricLabel.UserData=[]; filterMetricLabel.Text='目标频点衰减：尚未滤波';
-            if any(strcmp(noiseDD.Value,{'单频干扰','混合噪声'})) && strcmp(filterDD.Value,'带阻')
-                autoTuneBandstop(tone);
+            filteredAudio=[]; filterMetricLabel.Text='目标频点衰减：尚未滤波'; filterMetricLabel.UserData=[];
+            if strcmp(mode,'tone') && strcmp(mapFilter(filterDD.Value),'bandstop')
+                halfWidth=max(50,min(100,0.05*tone));
+                ff1.Value=max(1,tone-halfWidth); ff2.Value=min(0.49*audio.fs,tone+halfWidth);
             end
             showNoisePlots(audio.x,noisyAudio,tone);
-            setStatus(sprintf('含噪语音已生成：%s，可先试听再进行滤波',noiseDD.Value));
+            setStatus(sprintf('含噪语音已生成：%s，可先试听再执行滤波',noiseDD.Value));
         catch ME, showError(ME); end
     end
 
     function onApplyFilter(~,~)
         if isempty(noisyAudio), uialert(fig,'请先执行“步骤 1：生成含噪语音”。','尚无含噪语音'); return; end
         try
-            tone=min(toneField.Value,0.49*audio.fs);
-            type=mapFilter(filterDD.Value);
+            tone=min(toneField.Value,0.49*audio.fs); type=mapFilter(filterDD.Value);
             if strcmp(type,'enhance')
                 [filteredAudio,b]=enhance_speech(noisyAudio,audio.fs,0.70);
             else
                 f1v=min(ff1.Value,0.48*audio.fs); f2v=min(ff2.Value,0.49*audio.fs);
-                if any(strcmp(type,{'bandpass','bandstop'})) && f2v<=f1v, error('第二个频率必须大于第一个频率，并低于奈奎斯特频率。'); end
+                if any(strcmp(type,{'bandpass','bandstop'})) && f2v<=f1v, error('第二个频率必须大于第一个频率，并且低于奈奎斯特频率。'); end
                 b=design_fir_filter(type,audio.fs,round(forder.Value),f1v,f2v);
-                filteredAudio=apply_fir_filter(noisyAudio,b);
+                filteredAudio=normalize_audio(apply_fir_filter(noisyAudio,b),0.98);
             end
-            attenuationDb=showFilterPlots(noisyAudio,filteredAudio,b,tone);
+            attenuationDb=showFilteredPlots(audio.x,noisyAudio,filteredAudio,b,tone);
             filterMetricLabel.UserData=attenuationDb;
             filterMetricLabel.Text=sprintf('目标频点 %.0f Hz 衰减：%.1f dB',tone,attenuationDb);
-            setStatus(sprintf('滤波完成：%.0f Hz 目标频点衰减 %.1f dB，可试听比较',tone,attenuationDb));
+            setStatus(sprintf('滤波完成：目标频点约衰减 %.1f dB，可试听滤波结果',attenuationDb));
         catch ME, showError(ME); end
     end
 
@@ -261,51 +254,44 @@ onFourier([],[]);
         cla(axFilterTime); hold(axFilterTime,'on'); plot(axFilterTime,tt,xOriginal(1:nshow),'DisplayName','原音'); plot(axFilterTime,tt,xNoisy(1:nshow),'DisplayName','含噪'); hold(axFilterTime,'off'); legend(axFilterTime,'Location','best');
         [fo,mo]=one_sided_spectrum(xOriginal,audio.fs); [fn,mn]=one_sided_spectrum(xNoisy,audio.fs);
         cla(axBeforeSpec); hold(axBeforeSpec,'on'); plot(axBeforeSpec,fo,mo,'DisplayName','原音'); plot(axBeforeSpec,fn,mn,'DisplayName','含噪'); hold(axBeforeSpec,'off'); legend(axBeforeSpec,'Location','best'); xlim(axBeforeSpec,[0 min(5000,audio.fs/2)]);
-        cla(axResponse); axResponse.Title.String='步骤 2：滤波器幅频响应（等待滤波）';
-        cla(axMetric); axMetric.Title.String=sprintf('%.0f Hz 目标干扰频点（等待滤波）',tone);
+        cla(axResponse); axResponse.Title.String='步骤 2：尚未应用滤波器';
+        [~,io]=min(abs(fo-tone)); [~,in]=min(abs(fn-tone)); bar(axMetric,[1 2],[mo(io),mn(in)]); axMetric.XTick=[1 2]; axMetric.XTickLabel={'原音','含噪'}; axMetric.Title.String=sprintf('%.0f Hz：加噪前后',tone);
     end
 
-    function attenuationDb=showFilterPlots(xn,y,b,tone)
-        nshow=min(numel(xn),round(0.08*audio.fs)); tt=(0:nshow-1)'/audio.fs;
-        cla(axFilterTime); hold(axFilterTime,'on'); plot(axFilterTime,tt,audio.x(1:nshow),'DisplayName','原音'); plot(axFilterTime,tt,xn(1:nshow),'DisplayName','含噪'); plot(axFilterTime,tt,y(1:nshow),'DisplayName','滤波后'); hold(axFilterTime,'off'); legend(axFilterTime,'Location','best');
-        [fo,mo]=one_sided_spectrum(audio.x,audio.fs); [f0,m0]=one_sided_spectrum(xn,audio.fs); [f1,m1]=one_sided_spectrum(y,audio.fs);
-        cla(axBeforeSpec); hold(axBeforeSpec,'on'); plot(axBeforeSpec,fo,mo,'DisplayName','原音'); plot(axBeforeSpec,f0,m0,'DisplayName','含噪'); plot(axBeforeSpec,f1,m1,'DisplayName','滤波后'); hold(axBeforeSpec,'off'); legend(axBeforeSpec,'Location','best'); xlim(axBeforeSpec,[0 min(5000,audio.fs/2)]);
-        [fr,H]=filter_response(b,audio.fs,4096); plot(axResponse,fr,20*log10(abs(H)+1e-8)); xlim(axResponse,[0 audio.fs/2]); ylim(axResponse,[-90 10]); axResponse.Title.String='步骤 2：滤波器幅频响应';
-        [~,i0]=min(abs(f0-tone)); [~,i1]=min(abs(f1-tone)); vals=[m0(i0),m1(i1)];
-        bar(axMetric,[1 2],vals); axMetric.XTick=[1 2]; axMetric.XTickLabel={'含噪','滤波后'}; axMetric.Title.String=sprintf('%.0f Hz 目标干扰频点',tone);
-        attenuationDb=20*log10((vals(1)+eps)/(vals(2)+eps));
-    end
-
-    function autoTuneBandstop(tone)
-        halfWidth=min(100,max(30,0.08*tone));
-        low=max(1,tone-halfWidth); high=min(0.49*audio.fs,tone+halfWidth);
-        if high<=low, low=max(1,0.90*tone); high=min(0.49*audio.fs,1.10*tone); end
-        ff1.Value=low; ff2.Value=high;
+    function attenuationDb=showFilteredPlots(xOriginal,xNoisy,y,b,tone)
+        nshow=min(numel(xNoisy),round(0.08*audio.fs)); tt=(0:nshow-1)'/audio.fs;
+        cla(axFilterTime); hold(axFilterTime,'on'); plot(axFilterTime,tt,xOriginal(1:nshow),'DisplayName','原音'); plot(axFilterTime,tt,xNoisy(1:nshow),'DisplayName','含噪'); plot(axFilterTime,tt,y(1:nshow),'DisplayName','滤波后'); hold(axFilterTime,'off'); legend(axFilterTime,'Location','best');
+        [fo,mo]=one_sided_spectrum(xOriginal,audio.fs); [fn,mn]=one_sided_spectrum(xNoisy,audio.fs); [ff,mf]=one_sided_spectrum(y,audio.fs);
+        cla(axBeforeSpec); hold(axBeforeSpec,'on'); plot(axBeforeSpec,fo,mo,'DisplayName','原音'); plot(axBeforeSpec,fn,mn,'DisplayName','含噪'); plot(axBeforeSpec,ff,mf,'DisplayName','滤波后'); hold(axBeforeSpec,'off'); legend(axBeforeSpec,'Location','best'); xlim(axBeforeSpec,[0 min(5000,audio.fs/2)]);
+        [fr,H]=filter_response(b,audio.fs,4096); cla(axResponse); plot(axResponse,fr,20*log10(abs(H)+1e-8)); xlim(axResponse,[0 audio.fs/2]); ylim(axResponse,[-90 10]); axResponse.Title.String='步骤 2：滤波器幅频响应';
+        [~,in]=min(abs(fn-tone)); [~,ifilt]=min(abs(ff-tone)); before=max(mn(in),eps); after=max(mf(ifilt),eps); attenuationDb=20*log10(before/after);
+        cla(axMetric); bar(axMetric,[1 2],[before,after]); axMetric.XTick=[1 2]; axMetric.XTickLabel={'含噪','滤波后'}; axMetric.Title.String=sprintf('%.0f Hz：滤波前后',tone);
     end
 
     function onPlayNoisy(~,~)
-        if isempty(noisyAudio), uialert(fig,'请先生成含噪语音。','尚无结果'); return; end
+        if isempty(noisyAudio), uialert(fig,'请先执行“步骤 1：生成含噪语音”。','尚无结果'); return; end
         playSignal(noisyAudio,audio.fs); setStatus('正在播放含噪语音');
     end
 
     function onPlayFiltered(~,~)
-        if isempty(filteredAudio), uialert(fig,'请先应用滤波器。','尚无结果'); return; end
-        playSignal(filteredAudio,audio.fs); setStatus('正在播放滤波后的语音');
+        if isempty(filteredAudio), uialert(fig,'请先执行“步骤 2：应用滤波器”。','尚无结果'); return; end
+        playSignal(filteredAudio,audio.fs); setStatus('正在播放滤波后语音');
     end
 
     function onVoice(~,~)
         try
             [voiceAudio,desc]=apply_voice_preset(audio.x,audio.fs,voiceDD.Value);
-            voiceDesc.Value={desc;'';'真正的 AI 声线转换需要独立模型与训练/推理环境，本程序暂不依赖它。'};
+            voiceDesc.Value={desc;'';'提示：真正的 AI 声线转换需要独立模型与训练/推理环境，本程序不把传统 DSP 变声冒充 AI 换声线。'};
             n0=min(numel(audio.x),round(0.10*audio.fs)); n1=min(numel(voiceAudio),round(0.10*audio.fs));
             cla(axVoiceTime); hold(axVoiceTime,'on'); plot(axVoiceTime,(0:n0-1)'/audio.fs,audio.x(1:n0),'DisplayName','原始'); plot(axVoiceTime,(0:n1-1)'/audio.fs,voiceAudio(1:n1),'DisplayName','变声后'); hold(axVoiceTime,'off'); legend(axVoiceTime,'Location','best');
-            [f0,m0]=one_sided_spectrum(audio.x,audio.fs); [f1,m1]=one_sided_spectrum(voiceAudio,audio.fs); plot(axVoiceBefore,f0,m0); xlim(axVoiceBefore,[0 min(5000,audio.fs/2)]); plot(axVoiceAfter,f1,m1); xlim(axVoiceAfter,[0 min(5000,audio.fs/2)]); setStatus('传统 DSP 变声完成');
+            [f0,m0]=one_sided_spectrum(audio.x,audio.fs); [f1,m1]=one_sided_spectrum(voiceAudio,audio.fs); plot(axVoiceBefore,f0,m0); xlim(axVoiceBefore,[0 min(5000,audio.fs/2)]); plot(axVoiceAfter,f1,m1); xlim(axVoiceAfter,[0 min(5000,audio.fs/2)]);
+            setStatus('传统 DSP 变声完成');
         catch ME, showError(ME); end
     end
 
     function onPlayVoice(~,~)
         if isempty(voiceAudio), uialert(fig,'请先应用一种变声效果。','尚无结果'); return; end
-        playSignal(voiceAudio,audio.fs); setStatus('正在播放变声结果');
+        playSignal(voiceAudio,audio.fs);
     end
 
     function updateAudioInfo()
@@ -313,8 +299,7 @@ onFourier([],[]);
     end
 
     function clearDerived()
-        audio.processed=[]; audio.processedName=''; noisyAudio=[]; filteredAudio=[]; voiceAudio=[];
-        filterMetricLabel.UserData=[]; filterMetricLabel.Text='目标频点衰减：尚未滤波';
+        audio.processed=[]; audio.processedName=''; noisyAudio=[]; filteredAudio=[]; voiceAudio=[]; filterMetricLabel.UserData=[];
     end
 
     function playSignal(x,fs)
@@ -325,8 +310,19 @@ onFourier([],[]);
         if ~isempty(player), try, stop(player); catch, end; end
     end
 
-    function setStatus(txt), statusLabel.Text=txt; drawnow limitrate; end
-    function showError(ME), setStatus('操作失败'); uialert(fig,ME.message,'操作失败','Icon','error'); end
-    function out=mapNoise(v), switch v, case '混合噪声', out='mixed'; case '单频干扰', out='tone'; case '白噪声', out='white'; otherwise, out='none'; end; end
-    function out=mapFilter(v), switch v, case '带阻', out='bandstop'; case '低通', out='lowpass'; case '高通', out='highpass'; case '带通', out='bandpass'; otherwise, out='enhance'; end; end
+    function setStatus(txt)
+        statusLabel.Text=txt; drawnow limitrate;
+    end
+
+    function showError(ME)
+        setStatus('操作失败'); uialert(fig,ME.message,'操作失败','Icon','error');
+    end
+
+    function out=mapNoise(v)
+        switch v, case '混合噪声', out='mixed'; case '单频干扰', out='tone'; case '白噪声', out='white'; otherwise, out='none'; end
+    end
+
+    function out=mapFilter(v)
+        switch v, case '带阻', out='bandstop'; case '低通', out='lowpass'; case '高通', out='highpass'; case '带通', out='bandpass'; otherwise, out='enhance'; end
+    end
 end
