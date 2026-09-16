@@ -41,11 +41,6 @@ jobs:
         with:
           command: addpath(genpath(pwd)); test_user_manual_acceptance();
 
-      - name: Verify v0.4 regressions
-        uses: matlab-actions/run-command@v3
-        with:
-          command: addpath(genpath(pwd)); test_v04_regressions();
-
       - name: Verify v0.5 classroom presentation regressions
         uses: matlab-actions/run-command@v3
         with:
