@@ -1,5 +1,13 @@
 function test_v04_regressions()
 %TEST_V04_REGRESSIONS Regression tests from real classroom-use feedback.
+
+% The time-domain apparent alias must agree with the ACTUAL samples, not
+% merely use the absolute alias-frequency magnitude with the wrong phase.
+d=sine_sampling_demo(800,1000,0.02);
+xAtSamples=interp1(d.tRef,d.xApparent,d.tSample,'linear');
+assert(max(abs(xAtSamples-d.xSample)) < 2e-3, ...
+    'Apparent alias curve must pass through the actual sample points.');
+
 f = main();
 cleanup = onCleanup(@()close_if_valid(f)); %#ok<NASGU>
 drawnow;
