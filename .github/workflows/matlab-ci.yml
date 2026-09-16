@@ -46,6 +46,11 @@ jobs:
         with:
           command: addpath(genpath(pwd)); test_v04_regressions();
 
+      - name: Verify v0.5 classroom presentation regressions
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath(genpath(pwd)); test_v05_regressions();
+
       - name: Package tested MATLAB source
         run: zip -r matlab-tested-source.zip main.m app modules tests README.md docs
 
